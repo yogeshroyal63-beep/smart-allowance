@@ -1,88 +1,86 @@
 import { useState, useRef, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Send, Bot, User, Loader2, Zap, RefreshCw } from 'lucide-react'
 import { useStore } from '../../store/useStore'
+import { useApp } from '../../context/AppContext'
 import { useAgent } from '../../hooks/useAgent'
 import { formatRelativeTime } from '../../utils'
 
 const QUICK_PROMPTS_PARENT = [
-  'Show me spending summary for Alex',
-  'Set food limit to $25 for Sam',
+  'Show spending summary for all children',
+  'Which child is close to their limit?',
   'What transactions happened today?',
-  'Approve all pending payments',
+  'Give me AI insights on spending patterns',
 ]
 
 const QUICK_PROMPTS_CHILD = [
   'How much allowance do I have left?',
-  'Pay $5 to GameStore for Minecraft credits',
+  'Pay 0.001 ETH to GameStore for Minecraft',
   'Show my spending this month',
-  'Request $10 more for books',
+  'What categories can I spend in?',
 ]
 
 function TypingIndicator() {
   return (
-    <div className="flex items-center gap-2 px-4 py-3 glass rounded-2xl rounded-tl-sm w-fit">
-      <div className="flex gap-1">
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '10px 16px', background: 'rgba(255,255,255,0.04)',
+      border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16,
+      width: 'fit-content'
+    }}>
+      <div style={{ display: 'flex', gap: 4 }}>
         {[0, 1, 2].map(i => (
           <motion.div
             key={i}
-            className="w-1.5 h-1.5 rounded-full"
-            style={{ background: '#00ff87' }}
+            style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }}
             animate={{ y: [0, -4, 0] }}
             transition={{ duration: 0.6, delay: i * 0.15, repeat: Infinity }}
           />
         ))}
       </div>
-      <span className="text-xs text-white/30 font-mono">Agent thinking...</span>
+      <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>Agent thinking...</span>
     </div>
   )
 }
 
 function ChatMessage({ msg }) {
   const isUser = msg.role === 'user'
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      style={{ display: 'flex', gap: 12, flexDirection: isUser ? 'row-reverse' : 'row' }}
     >
-      {/* Avatar */}
-      <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center mt-1 ${
-        isUser
-          ? 'bg-white/10'
-          : 'agent-pulse'
-      }`}
-        style={!isUser ? { background: 'rgba(0,255,135,0.15)', border: '1px solid rgba(0,255,135,0.3)' } : {}}
-      >
-        {isUser ? <User size={14} className="text-white/60" /> : <Bot size={14} className="text-neon" />}
+      <div style={{
+        width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 4,
+        background: isUser ? 'rgba(255,255,255,0.08)' : 'rgba(0,255,135,0.15)',
+        border: isUser ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,255,135,0.3)'
+      }}>
+        {isUser
+          ? <User size={14} color="rgba(255,255,255,0.6)" />
+          : <Bot size={14} color="var(--accent)" />
+        }
       </div>
-
-      {/* Bubble */}
-      <div className={`max-w-[75%] ${isUser ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
-        <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-          isUser
-            ? 'bg-white/10 rounded-tr-sm text-white/90'
-            : msg.error
-              ? 'rounded-tl-sm text-red-400'
-              : 'glass rounded-tl-sm text-white/85'
-        }`}
-          style={!isUser && !msg.error ? { borderColor: 'rgba(0,255,135,0.1)' } : {}}
-        >
+      <div style={{ maxWidth: '75%', display: 'flex', flexDirection: 'column', gap: 4, alignItems: isUser ? 'flex-end' : 'flex-start' }}>
+        <div style={{
+          padding: '10px 14px', borderRadius: 16, fontSize: 14, lineHeight: 1.6,
+          background: isUser ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+          border: isUser ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,255,135,0.1)',
+          color: msg.error ? '#f87171' : 'var(--text-primary)',
+          borderTopRightRadius: isUser ? 4 : 16,
+          borderTopLeftRadius: isUser ? 16 : 4,
+        }}>
           {msg.content}
-
-          {/* Action badge */}
           {msg.action && (
-            <div className="mt-2 pt-2 border-t border-white/10">
-              <span className="badge-green text-xs">
-                <Zap size={10} />
-                {msg.action}
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ fontSize: 11, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Zap size={10} /> {msg.action}
               </span>
             </div>
           )}
         </div>
-
-        <span className="text-xs text-white/20 px-1 font-mono">
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', padding: '0 4px' }}>
           {formatRelativeTime(msg.timestamp)}
         </span>
       </div>
@@ -92,7 +90,8 @@ function ChatMessage({ msg }) {
 
 export default function AgentChat({ compact = false }) {
   const [input, setInput] = useState('')
-  const { chatHistory, agentThinking, role, clearChat } = useStore()
+  const { chatHistory, agentThinking, clearChat } = useStore()
+  const { role } = useApp()   // ← read role from AppContext (works in demo mode too)
   const { sendMessage, loading } = useAgent()
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -119,50 +118,52 @@ export default function AgentChat({ compact = false }) {
   }
 
   return (
-    <div className={`flex flex-col ${compact ? 'h-[420px]' : 'h-[600px]'} glass rounded-2xl overflow-hidden`}>
+    <div style={{
+      display: 'flex', flexDirection: 'column',
+      height: compact ? 420 : 600,
+      background: 'var(--bg-secondary)',
+      border: '1px solid var(--border)',
+      borderRadius: 16, overflow: 'hidden'
+    }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center agent-pulse"
-            style={{ background: 'rgba(0,255,135,0.15)', border: '1px solid rgba(0,255,135,0.3)' }}>
-            <Bot size={14} className="text-neon" />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,255,135,0.15)', border: '1px solid rgba(0,255,135,0.3)' }}>
+            <Bot size={14} color="var(--accent)" />
           </div>
           <div>
-            <p className="text-sm font-display font-semibold">Claude Agent</p>
-            <p className="text-xs text-white/30 font-mono">
+            <p style={{ fontSize: 14, fontWeight: 600 }}>Claude Agent</p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
               {agentThinking ? 'Thinking...' : 'Ready'}
             </p>
           </div>
         </div>
-        <button
-          onClick={clearChat}
-          className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-          title="Clear chat"
-        >
-          <RefreshCw size={12} className="text-white/30" />
+        <button onClick={clearChat} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8 }} title="Clear chat">
+          <RefreshCw size={12} color="var(--text-muted)" />
         </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
         {chatHistory.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'rgba(0,255,135,0.08)', border: '1px solid rgba(0,255,135,0.15)' }}>
-              <Bot size={28} className="text-neon/60" />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16, textAlign: 'center' }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,255,135,0.08)', border: '1px solid rgba(0,255,135,0.15)' }}>
+              <Bot size={24} color="var(--accent)" style={{ opacity: 0.6 }} />
             </div>
             <div>
-              <p className="text-sm font-display font-semibold text-white/50 mb-1">Ask the agent anything</p>
-              <p className="text-xs text-white/25">Try a quick prompt below to get started</p>
+              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Ask the agent anything</p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Try a quick prompt below to get started</p>
             </div>
-
-            <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, width: '100%', maxWidth: 360 }}>
               {quickPrompts.map(p => (
                 <button
                   key={p}
                   onClick={() => sendMessage(p)}
-                  className="px-3 py-2 rounded-xl text-xs text-left text-white/50 hover:text-white/80 transition-all"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                  style={{
+                    padding: '8px 12px', borderRadius: 12, fontSize: 12, textAlign: 'left',
+                    background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
+                    color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 1.4
+                  }}
                 >
                   {p}
                 </button>
@@ -176,10 +177,9 @@ export default function AgentChat({ compact = false }) {
         ))}
 
         {agentThinking && (
-          <div className="flex gap-3">
-            <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center"
-              style={{ background: 'rgba(0,255,135,0.15)', border: '1px solid rgba(0,255,135,0.3)' }}>
-              <Bot size={14} className="text-neon" />
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,255,135,0.15)', border: '1px solid rgba(0,255,135,0.3)' }}>
+              <Bot size={14} color="var(--accent)" />
             </div>
             <TypingIndicator />
           </div>
@@ -188,15 +188,18 @@ export default function AgentChat({ compact = false }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick prompts strip (when chat has messages) */}
+      {/* Quick prompts strip when chat has messages */}
       {chatHistory.length > 0 && (
-        <div className="px-4 py-2 flex gap-2 overflow-x-auto border-t border-white/5">
+        <div style={{ padding: '8px 16px', display: 'flex', gap: 8, overflowX: 'auto', borderTop: '1px solid var(--border)' }}>
           {quickPrompts.slice(0, 2).map(p => (
             <button
               key={p}
               onClick={() => sendMessage(p)}
-              className="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs text-white/40 hover:text-white/70 transition-all whitespace-nowrap"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+              style={{
+                flexShrink: 0, padding: '6px 12px', borderRadius: 12, fontSize: 12,
+                background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)',
+                color: 'var(--text-muted)', cursor: 'pointer', whiteSpace: 'nowrap'
+              }}
             >
               {p}
             </button>
@@ -205,8 +208,8 @@ export default function AgentChat({ compact = false }) {
       )}
 
       {/* Input */}
-      <div className="p-3 border-t border-white/5">
-        <div className="flex gap-2">
+      <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
           <input
             ref={inputRef}
             type="text"
@@ -214,18 +217,22 @@ export default function AgentChat({ compact = false }) {
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
             placeholder="Message the agent..."
-            className="input-field flex-1 py-2.5 text-sm"
+            className="input-field"
+            style={{ flex: 1, padding: '10px 14px', fontSize: 14 }}
             disabled={loading}
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() || loading}
-            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all disabled:opacity-30"
-            style={{ background: 'rgba(0,255,135,0.15)', border: '1px solid rgba(0,255,135,0.3)' }}
+            style={{
+              width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,255,135,0.15)', border: '1px solid rgba(0,255,135,0.3)',
+              cursor: 'pointer', opacity: (!input.trim() || loading) ? 0.3 : 1, transition: 'opacity 0.2s'
+            }}
           >
             {loading
-              ? <Loader2 size={16} className="text-neon animate-spin" />
-              : <Send size={16} className="text-neon" />
+              ? <Loader2 size={16} color="var(--accent)" style={{ animation: 'spin 0.8s linear infinite' }} />
+              : <Send size={16} color="var(--accent)" />
             }
           </button>
         </div>

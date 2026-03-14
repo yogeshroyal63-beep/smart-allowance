@@ -1,18 +1,20 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Users, TrendingUp, Shield, Zap, Plus, RefreshCw } from 'lucide-react'
+import { Users, TrendingUp, Shield, Zap, Plus, RefreshCw, Bot } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import ChildCard from '../parent/ChildCard'
 import AddChildModal from '../parent/AddChildModal'
 import TransactionFeed from '../parent/TransactionFeed'
 import AIInsights from '../parent/AIInsights'
 import FundModal from '../parent/FundModal'
+import AgentChat from '../agent/AgentChat'
 
 export default function ParentDashboard() {
   const { children, transactions, wallet } = useApp()
   const [showAddChild, setShowAddChild] = useState(false)
   const [showFund, setShowFund] = useState(false)
   const [selectedChild, setSelectedChild] = useState(null)
+  const [activeTab, setActiveTab] = useState('overview')
 
   const totalBalance = children.reduce((s, c) => s + parseFloat(c.balance || 0), 0)
   const totalSpent = children.reduce((s, c) => s + parseFloat(c.spent || 0), 0)
@@ -23,6 +25,13 @@ export default function ParentDashboard() {
     { label: 'Children Managed', value: children.length, icon: Users, color: '#a78bfa' },
     { label: 'This Month Spent', value: `${totalSpent.toFixed(4)} ETH`, icon: Zap, color: '#fb923c' },
     { label: 'Blocked Payments', value: blocked, icon: Shield, color: '#f87171' },
+  ]
+
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'children', label: 'Children' },
+    { id: 'agent', label: '🤖 Agent' },
+    { id: 'analytics', label: 'Analytics' },
   ]
 
   return (
@@ -65,46 +74,115 @@ export default function ParentDashboard() {
         ))}
       </div>
 
-      {/* Main grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24 }}>
-        {/* Left column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* Children */}
-          <div>
-            <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--text-secondary)' }}>CHILDREN</h2>
-            {children.length === 0 ? (
-              <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>👶</div>
-                <p style={{ color: 'var(--text-secondary)' }}>No children added yet</p>
-                <button className="btn-primary" onClick={() => setShowAddChild(true)} style={{ marginTop: 16 }}>
-                  Add First Child
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {children.map(child => (
-                  <ChildCard
-                    key={child.id}
-                    child={child}
-                    onFund={() => { setSelectedChild(child); setShowFund(true) }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* AI Insights */}
-          <AIInsights />
-        </div>
-
-        {/* Right column - transactions */}
-        <div>
-          <TransactionFeed />
-        </div>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              padding: '10px 20px',
+              fontSize: 14,
+              fontWeight: 600,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: activeTab === t.id ? 'var(--accent)' : 'var(--text-muted)',
+              borderBottom: activeTab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
+              marginBottom: -1,
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
+      {/* Tab: Overview */}
+      {activeTab === 'overview' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--text-secondary)' }}>CHILDREN</h2>
+              {children.length === 0 ? (
+                <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>👶</div>
+                  <p style={{ color: 'var(--text-secondary)' }}>No children added yet</p>
+                  <button className="btn-primary" onClick={() => setShowAddChild(true)} style={{ marginTop: 16 }}>
+                    Add First Child
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {children.map(child => (
+                    <ChildCard
+                      key={child.id}
+                      child={child}
+                      onFund={() => { setSelectedChild(child); setShowFund(true) }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            <AIInsights />
+          </div>
+          <div>
+            <TransactionFeed />
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Children */}
+      {activeTab === 'children' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {children.length === 0 ? (
+            <div className="card" style={{ padding: 40, textAlign: 'center' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>👶</div>
+              <p style={{ color: 'var(--text-secondary)' }}>No children added yet</p>
+              <button className="btn-primary" onClick={() => setShowAddChild(true)} style={{ marginTop: 16 }}>
+                Add First Child
+              </button>
+            </div>
+          ) : (
+            children.map(child => (
+              <ChildCard
+                key={child.id}
+                child={child}
+                onFund={() => { setSelectedChild(child); setShowFund(true) }}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Tab: Agent */}
+      {activeTab === 'agent' && (
+        <div style={{ maxWidth: 700 }}>
+          <AgentChat />
+        </div>
+      )}
+
+      {/* Tab: Analytics */}
+      {activeTab === 'analytics' && (
+        <div className="card" style={{ padding: 32, textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+          <p style={{ color: 'var(--text-secondary)' }}>Analytics coming soon</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 8 }}>
+            Full spending charts and trends will be available here
+          </p>
+        </div>
+      )}
+
       {showAddChild && <AddChildModal onClose={() => setShowAddChild(false)} />}
-      {showFund && selectedChild && <FundModal child={selectedChild} onClose={() => { setShowFund(false); setSelectedChild(null) }} />}
+      {showFund && selectedChild && (
+        <FundModal
+          child={selectedChild}
+          onClose={() => { setShowFund(false); setSelectedChild(null) }}
+        />
+      )}
     </div>
   )
 }

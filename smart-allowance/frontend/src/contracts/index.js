@@ -1,77 +1,50 @@
-// Deployed contract addresses (update after deployment)
-export const CONTRACTS = {
-  SmartAllowance: '0x0000000000000000000000000000000000000000', // TODO: deploy
-  PrivacyPayment: '0x0000000000000000000000000000000000000000', // TODO: deploy
-}
+// Deployed contract - AllowanceManager on Base Sepolia
+export const CONTRACT_ADDRESS = '0x0eE682Ed9e49BDC7379f6617cEF1942A439385fB'
 
-export const SMART_ALLOWANCE_ABI = [
+export const ALLOWANCE_MANAGER_ABI = [
   // Events
-  'event AllowanceSet(address indexed parent, address indexed child, uint256 amount, uint256 monthlyLimit)',
-  'event PaymentMade(address indexed child, address indexed merchant, uint256 amount, bytes32 category)',
-  'event LimitUpdated(address indexed parent, address indexed child, bytes32 category, uint256 limit)',
-  'event AgentAuthorized(address indexed child, address indexed agent, bool status)',
-  'event PaymentRequested(bytes32 indexed requestId, address indexed child, uint256 amount, string reason)',
-  'event PaymentApproved(bytes32 indexed requestId, address indexed parent)',
-  'event PaymentRejected(bytes32 indexed requestId, address indexed parent)',
+  'event ChildAdded(address indexed parent, address indexed child, string aliasName)',
+  'event ChildFunded(address indexed parent, address indexed child, uint256 amount)',
+  'event PaymentProcessed(address indexed child, address indexed merchant, uint256 amount, string category, bool approved)',
+  'event LimitsUpdated(address indexed child, uint256 weeklyLimit, uint256 monthlyLimit)',
 
   // Parent functions
-  'function setAllowance(address child, uint256 monthlyLimit) external payable',
-  'function setCategoryLimit(address child, bytes32 category, uint256 limit) external',
-  'function authorizeAgent(address child, address agent, bool status) external',
-  'function approvePayment(bytes32 requestId) external',
-  'function rejectPayment(bytes32 requestId) external',
-  'function topUp(address child) external payable',
+  'function addChild(address childWallet, string aliasName, uint256 weeklyLimit, uint256 monthlyLimit) external',
+  'function fundChild(address childWallet) external payable',
+  'function updateLimits(address childWallet, uint256 weeklyLimit, uint256 monthlyLimit) external',
+  'function setCategory(address childWallet, string category, bool allowed) external',
+  'function withdrawFromChild(address childWallet, uint256 amount) external',
 
-  // Child / Agent functions
-  'function requestPayment(address merchant, uint256 amount, bytes32 category, string reason) external returns (bytes32)',
-  'function executePayment(bytes32 requestId) external',
+  // AI Agent calls
+  'function processPayment(address childWallet, address payable merchant, uint256 amount, string category, string merchantName, bool approved) external',
 
   // View functions
-  'function getAllowance(address child) external view returns (uint256 balance, uint256 monthlyLimit, uint256 spent)',
-  'function getCategorySpent(address child, bytes32 category) external view returns (uint256)',
-  'function getCategoryLimit(address child, bytes32 category) external view returns (uint256)',
-  'function isAgentAuthorized(address child, address agent) external view returns (bool)',
-  'function getPendingRequest(bytes32 requestId) external view returns (address child, address merchant, uint256 amount, bytes32 category, string reason, uint8 status)',
+  'function getChild(address childWallet) external view returns (tuple(address parent, string aliasName, uint256 balance, uint256 weeklyLimit, uint256 monthlyLimit, uint256 weeklySpent, uint256 monthlySpent, bool active))',
+  'function getAlias(address childWallet) external view returns (string)',
+  'function getSpendingStats(address childWallet) external view returns (uint256 weeklySpent, uint256 monthlySpent, uint256 weeklyLimit, uint256 monthlyLimit, uint256 balance)',
+  'function getParentChildren(address parent) external view returns (address[])',
+  'function isCategoryAllowed(address childWallet, string category) external view returns (bool)',
+  'function resolveAlias(string aliasName) external view returns (address)',
 ]
 
-export const PRIVACY_PAYMENT_ABI = [
-  // Events
-  'event PrivatePaymentSent(bytes32 indexed nullifier, address indexed merchant, uint256 amount)',
-  'event CommitmentAdded(bytes32 indexed commitment)',
-
-  // Functions
-  'function deposit(bytes32 commitment) external payable',
-  'function withdraw(bytes calldata proof, bytes32 nullifier, bytes32 root, address recipient, uint256 amount) external',
-  'function isSpent(bytes32 nullifier) external view returns (bool)',
-  'function getRoot() external view returns (bytes32)',
-]
-
-// Category bytes32 mappings
-export const CATEGORIES = {
-  food: '0x666f6f6400000000000000000000000000000000000000000000000000000000',
-  games: '0x67616d657300000000000000000000000000000000000000000000000000000000',
-  education: '0x656475636174696f6e000000000000000000000000000000000000000000000000',
-  transport: '0x7472616e73706f727400000000000000000000000000000000000000000000000000',
-  entertainment: '0x656e7465727461696e6d656e74000000000000000000000000000000000000000000',
+// Base Sepolia testnet (where contract is deployed)
+export const BASE_CHAIN = {
+  id: 84532,
+  name: 'Base Sepolia',
+  network: 'base-sepolia',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://sepolia.base.org'] },
+  },
+  blockExplorers: {
+    default: { name: 'BaseScan', url: 'https://sepolia.basescan.org' },
+  },
 }
 
 export const CATEGORY_LABELS = {
   food: '🍔 Food',
-  games: '🎮 Games',
+  gaming: '🎮 Gaming',
   education: '📚 Education',
-  transport: '🚌 Transport',
+  clothing: '👕 Clothing',
   entertainment: '🎬 Entertainment',
-}
-
-export const BASE_CHAIN = {
-  id: 8453,
-  name: 'Base',
-  network: 'base',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: {
-    default: { http: ['https://mainnet.base.org'] },
-  },
-  blockExplorers: {
-    default: { name: 'BaseScan', url: 'https://basescan.org' },
-  },
 }

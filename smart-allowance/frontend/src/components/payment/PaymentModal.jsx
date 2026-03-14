@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import { X, Send, Shield, CheckCircle, XCircle, Loader } from 'lucide-react'
+import { X, Send, Shield, CheckCircle, XCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../../context/AppContext'
+import { ethers } from 'ethers'
+import { CONTRACT_ADDRESS, ABI } from '../../contracts/AllowanceManager'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
@@ -9,16 +11,24 @@ const CATEGORIES = ['food', 'education', 'entertainment', 'clothing', 'gaming']
 const CATEGORY_ICONS = { food: '🍔', education: '📚', entertainment: '🎬', clothing: '👕', gaming: '🎮' }
 
 const MERCHANTS = {
-  food: ['McDonald\'s', 'Subway', 'Chipotle', 'Pizza Hut'],
+  food: ["McDonald's", 'Subway', 'Chipotle', 'Pizza Hut'],
   education: ['Khan Academy', 'Coursera', 'Textbooks.com', 'Duolingo Premium'],
   entertainment: ['Netflix', 'Spotify', 'YouTube Premium', 'Cinema Tickets'],
   clothing: ['Nike', 'H&M', 'Zara', 'Uniqlo'],
   gaming: ['Steam', 'PlayStation Store', 'Xbox Store', 'Roblox']
 }
 
+// Merchant wallet addresses (demo — in prod these would be real addresses)
+const MERCHANT_WALLETS = {
+  "McDonald's": '0x000000000000000000000000000000000000dEaD',
+  'Subway': '0x000000000000000000000000000000000000dEaD',
+  'Khan Academy': '0x000000000000000000000000000000000000dEaD',
+  'Steam': '0x000000000000000000000000000000000000dEaD',
+}
+
 export default function PaymentModal({ onClose }) {
-  const { childProfile, setChildProfile } = useApp()
-  const [step, setStep] = useState('form') // form | processing | result
+  const { childProfile, setChildProfile, signer, wallet } = useApp()
+  const [step, setStep] = useState('form')
   const [form, setForm] = useState({ merchant: '', amount: '', category: '', notes: '' })
   const [result, setResult] = useState(null)
 
@@ -33,6 +43,7 @@ export default function PaymentModal({ onClose }) {
     }
     setStep('processing')
     try {
+      // Step 1: AI evaluates payment
       const payload = {
         childAlias: childProfile.alias,
         merchant: form.merchant,
@@ -49,10 +60,38 @@ export default function PaymentModal({ onClose }) {
       }
 
       const response = await axios.post('/api/payment/request', payload)
-      setResult(response.data)
+      const aiResult = response.data
 
-      if (response.data.approved) {
-        // Update local profile
+      // Step 2: If approved and real wallet, call contract
+      if (aiResult.approved && signer && wallet && !wallet.startsWith('0xDEMO')) {
+        try {
+          const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer)
+          const merchantWallet = MERCHANT_WALLETS[form.merchant] || '0x000000000000000000000000000000000000dEaD'
+          const amountWei = ethers.parseEther(form.amount)
+
+          const tx = await contract.processPayment(
+            wallet,           // childWallet
+            merchantWallet,   // merchant address
+            amountWei,        // amount
+            form.category,    // category
+            form.merchant,    // merchantName
+            true              // approved
+          )
+          toast.loading('Processing on-chain...', { id: 'payment' })
+          const receipt = await tx.wait()
+          aiResult.txHash = receipt.hash
+          aiResult.onChain = true
+          toast.success('Payment processed on-chain!', { id: 'payment' })
+        } catch (contractErr) {
+          console.error('Contract call failed:', contractErr)
+          // AI approved but contract failed — still show result
+          aiResult.contractError = contractErr.reason || 'Contract call failed'
+        }
+      }
+
+      setResult(aiResult)
+
+      if (aiResult.approved) {
         setChildProfile(p => ({
           ...p,
           balance: (parseFloat(p.balance) - parseFloat(form.amount)).toFixed(4),
@@ -65,7 +104,7 @@ export default function PaymentModal({ onClose }) {
             category: form.category,
             status: 'approved',
             timestamp: Date.now()
-          }, ...p.transactions]
+          }, ...(p.transactions || [])]
         }))
       }
     } catch (err) {
@@ -74,17 +113,16 @@ export default function PaymentModal({ onClose }) {
       const allowed = childProfile.categories[form.category]
       const wouldExceed = parseFloat(childProfile.weeklySpent) + parseFloat(form.amount || 0) > parseFloat(childProfile.weeklyLimit)
       const approved = allowed && !wouldExceed
-
       setResult({
         approved,
         reason: !allowed
           ? `❌ "${form.category}" category is not allowed by your parent.`
           : wouldExceed
           ? `❌ This payment would exceed your weekly limit of ${childProfile.weeklyLimit} ETH.`
-          : `✅ Payment approved. ${form.merchant} received ${form.amount} ETH from alias ${childProfile.alias}.`,
+          : `✅ Payment approved. ${form.merchant} received ${form.amount} ETH.`,
         aiAnalysis: approved
-          ? `Claude verified: payment is within your ${form.category} category budget, weekly limit not exceeded. Transaction processed with alias ${childProfile.alias} — your real identity was not shared.`
-          : `Claude blocked this payment based on your parent's rules. No funds were transferred and no personal information was revealed.`,
+          ? `Payment is within your ${form.category} budget. Transaction processed with alias ${childProfile.alias} — your real identity was not shared.`
+          : `Payment blocked based on your parent's rules. No funds transferred.`,
         txHash: approved ? `0x${Math.random().toString(16).slice(2, 66)}` : null,
         privacyNote: `Merchant only sees: ${childProfile.alias}`
       })
@@ -99,7 +137,6 @@ export default function PaymentModal({ onClose }) {
       zIndex: 1000, backdropFilter: 'blur(6px)'
     }}>
       <div className="card" style={{ width: 480, padding: 32, maxHeight: '90vh', overflowY: 'auto' }}>
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Send size={20} color="var(--accent)" />
@@ -111,10 +148,8 @@ export default function PaymentModal({ onClose }) {
         </div>
 
         <AnimatePresence mode="wait">
-          {/* FORM */}
           {step === 'form' && (
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              {/* Privacy reminder */}
               <div style={{ padding: 12, background: 'rgba(20,184,166,0.05)', borderRadius: 8, border: '1px solid rgba(20,184,166,0.2)', marginBottom: 20, display: 'flex', gap: 10 }}>
                 <Shield size={16} color="var(--accent)" style={{ flexShrink: 0, marginTop: 1 }} />
                 <div>
@@ -126,7 +161,6 @@ export default function PaymentModal({ onClose }) {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {/* Category */}
                 <div>
                   <label style={{ marginBottom: 10, display: 'block' }}>Category *</label>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -138,8 +172,7 @@ export default function PaymentModal({ onClose }) {
                           onClick={() => allowed && handleCategorySelect(cat)}
                           style={{
                             padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500,
-                            cursor: allowed ? 'pointer' : 'not-allowed',
-                            opacity: allowed ? 1 : 0.4,
+                            cursor: allowed ? 'pointer' : 'not-allowed', opacity: allowed ? 1 : 0.4,
                             background: form.category === cat ? 'rgba(20,184,166,0.15)' : 'var(--bg-primary)',
                             border: `1px solid ${form.category === cat ? 'rgba(20,184,166,0.4)' : 'var(--border)'}`,
                             color: form.category === cat ? 'var(--accent)' : allowed ? 'var(--text-primary)' : 'var(--text-muted)',
@@ -154,14 +187,13 @@ export default function PaymentModal({ onClose }) {
                   </div>
                 </div>
 
-                {/* Merchant */}
                 <div>
                   <label>Merchant *</label>
                   {form.category ? (
                     <select value={form.merchant} onChange={e => setForm(f => ({ ...f, merchant: e.target.value }))}>
                       <option value="">Select merchant...</option>
                       {MERCHANTS[form.category]?.map(m => <option key={m} value={m}>{m}</option>)}
-                      <option value="custom">Other (type below)</option>
+                      <option value="custom">Other</option>
                     </select>
                   ) : (
                     <input disabled placeholder="Select a category first" />
@@ -170,12 +202,11 @@ export default function PaymentModal({ onClose }) {
                     <input
                       style={{ marginTop: 8 }}
                       placeholder="Enter merchant name"
-                      onChange={e => setForm(f => ({ ...f, merchant: e.target.value === 'custom' ? '' : e.target.value }))}
+                      onChange={e => setForm(f => ({ ...f, merchant: e.target.value }))}
                     />
                   )}
                 </div>
 
-                {/* Amount */}
                 <div>
                   <label>Amount (ETH) *</label>
                   <input
@@ -192,7 +223,6 @@ export default function PaymentModal({ onClose }) {
                   )}
                 </div>
 
-                {/* Spending info */}
                 <div style={{ padding: 12, background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Weekly used</span>
@@ -206,10 +236,7 @@ export default function PaymentModal({ onClose }) {
 
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button className="btn-secondary" onClick={onClose} style={{ flex: 1 }}>Cancel</button>
-                  <button
-                    className="btn-primary" onClick={handleSubmit}
-                    style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                  >
+                  <button className="btn-primary" onClick={handleSubmit} style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                     <Send size={16} /> Request Payment via AI
                   </button>
                 </div>
@@ -217,20 +244,18 @@ export default function PaymentModal({ onClose }) {
             </motion.div>
           )}
 
-          {/* PROCESSING */}
           {step === 'processing' && (
             <motion.div key="processing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               style={{ padding: '40px 0', textAlign: 'center' }}
             >
               <div style={{ width: 60, height: 60, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', margin: '0 auto 20px', animation: 'spin 0.8s linear infinite' }} />
-              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Claude is reviewing...</h3>
+              <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>AI is reviewing...</h3>
               <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 4 }}>Checking spending limits & categories</p>
               <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Your identity stays private throughout</p>
               <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
             </motion.div>
           )}
 
-          {/* RESULT */}
           {step === 'result' && result && (
             <motion.div key="result" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
               <div style={{ textAlign: 'center', marginBottom: 24 }}>
@@ -248,32 +273,29 @@ export default function PaymentModal({ onClose }) {
                 <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{result.reason}</p>
               </div>
 
-              {/* AI Analysis */}
               <div style={{ padding: 16, background: 'rgba(20,184,166,0.05)', borderRadius: 10, border: '1px solid rgba(20,184,166,0.2)', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}>🤖 Claude AI Analysis</span>
-                </div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', marginBottom: 8 }}>🤖 AI Analysis</p>
                 <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{result.aiAnalysis}</p>
               </div>
 
-              {/* Privacy note */}
               <div style={{ padding: 12, background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 20 }}>
                 <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>🔒 Privacy Report</p>
                 <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{result.privacyNote}</p>
                 {result.txHash && (
                   <a
-                    href={`https://basescan.org/tx/${result.txHash}`}
+                    href={`https://sepolia.basescan.org/tx/${result.txHash}`}
                     target="_blank" rel="noopener noreferrer"
                     style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: 11, color: 'var(--accent)', textDecoration: 'none' }}
                   >
                     View on BaseScan →
                   </a>
                 )}
+                {result.onChain && (
+                  <p style={{ fontSize: 11, color: 'var(--green)', marginTop: 4 }}>✅ Processed on Base Sepolia</p>
+                )}
               </div>
 
-              <button className="btn-primary" onClick={onClose} style={{ width: '100%' }}>
-                Done
-              </button>
+              <button className="btn-primary" onClick={onClose} style={{ width: '100%' }}>Done</button>
             </motion.div>
           )}
         </AnimatePresence>

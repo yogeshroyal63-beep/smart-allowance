@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { X, Wallet, ArrowRight } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import { ethers } from 'ethers'
+import { CONTRACT_ADDRESS, ABI } from '../../contracts/AllowanceManager'
 import toast from 'react-hot-toast'
 
 const QUICK_AMOUNTS = ['0.01', '0.025', '0.05', '0.1']
@@ -18,13 +19,14 @@ export default function FundModal({ child, onClose }) {
     }
     setLoading(true)
     try {
-      if (signer && child.walletAddress !== '0x0') {
-        // Real transaction
-        const tx = await signer.sendTransaction({
-          to: child.walletAddress,
+      if (signer && wallet && !wallet.startsWith('0xDEMO')) {
+        // Real contract call — fundChild(childWallet) payable
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer)
+        toast.loading('Confirm transaction in MetaMask...', { id: 'fund' })
+        const tx = await contract.fundChild(child.walletAddress, {
           value: ethers.parseEther(amount)
         })
-        toast.loading('Transaction submitted...', { id: 'fund' })
+        toast.loading('Waiting for confirmation...', { id: 'fund' })
         await tx.wait()
         toast.success(`Funded ${amount} ETH to ${child.name}`, { id: 'fund' })
       } else {
@@ -32,6 +34,7 @@ export default function FundModal({ child, onClose }) {
         await new Promise(r => setTimeout(r, 1200))
         toast.success(`Demo: Funded ${amount} ETH to ${child.name}`)
       }
+
       // Update local state
       setChildren(children.map(c => c.id === child.id
         ? { ...c, balance: (parseFloat(c.balance) + parseFloat(amount)).toFixed(4) }
@@ -40,7 +43,7 @@ export default function FundModal({ child, onClose }) {
       onClose()
     } catch (err) {
       console.error(err)
-      toast.error(err.message?.slice(0, 60) || 'Transaction failed')
+      toast.error(err.reason || err.message?.slice(0, 60) || 'Transaction failed', { id: 'fund' })
     } finally {
       setLoading(false)
     }
@@ -63,7 +66,6 @@ export default function FundModal({ child, onClose }) {
           </button>
         </div>
 
-        {/* Child info */}
         <div style={{ padding: 14, background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Alias</span>
@@ -81,7 +83,6 @@ export default function FundModal({ child, onClose }) {
           </div>
         </div>
 
-        {/* Quick amounts */}
         <div style={{ marginBottom: 16 }}>
           <label style={{ marginBottom: 10, display: 'block' }}>Quick Select</label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -102,7 +103,6 @@ export default function FundModal({ child, onClose }) {
           </div>
         </div>
 
-        {/* Custom amount */}
         <div style={{ marginBottom: 24 }}>
           <label>Custom Amount (ETH)</label>
           <input
@@ -117,9 +117,7 @@ export default function FundModal({ child, onClose }) {
 
         {amount && parseFloat(amount) > 0 && (
           <div style={{ padding: 12, background: 'rgba(20,184,166,0.05)', borderRadius: 8, border: '1px solid rgba(20,184,166,0.2)', marginBottom: 20, textAlign: 'center' }}>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-              New balance after funding:
-            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>New balance after funding:</p>
             <p className="mono" style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)', marginTop: 4 }}>
               {(parseFloat(child.balance) + parseFloat(amount || 0)).toFixed(4)} ETH
             </p>

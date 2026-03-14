@@ -30,6 +30,11 @@ export function AppProvider({ children }) {
       setSigner(_signer)
       setWallet(address)
       setRole(selectedRole)
+      setRole(selectedRole)
+      setChildrenList([])        // ← add
+      setTransactions([])        // ← add
+      setChildProfile(null)      // ← add
+      
       toast.success(`Connected: ${address.slice(0, 6)}...${address.slice(-4)}`)
       return true
     } catch (err) {

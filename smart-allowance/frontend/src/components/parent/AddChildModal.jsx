@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { X, UserPlus } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
+import { ethers } from 'ethers'
+import { CONTRACT_ADDRESS, ABI } from '../../contracts/AllowanceManager'
 import toast from 'react-hot-toast'
-import axios from 'axios'
 
 const CATEGORIES = ['food', 'education', 'entertainment', 'clothing', 'gaming']
 const CATEGORY_ICONS = { food: '🍔', education: '📚', entertainment: '🎬', clothing: '👕', gaming: '🎮' }
@@ -15,7 +16,7 @@ function generateAlias() {
 }
 
 export default function AddChildModal({ onClose }) {
-  const { setChildren, children, wallet } = useApp()
+  const { setChildren, children, signer, wallet } = useApp()
   const [form, setForm] = useState({
     name: '',
     age: '',
@@ -36,10 +37,37 @@ export default function AddChildModal({ onClose }) {
       toast.error('Fill all required fields')
       return
     }
+    if (!ethers.isAddress(form.walletAddress.toLowerCase())) {
+      toast.error('Invalid wallet address')
+      return
+    }
+
     setLoading(true)
     try {
-      // In real app: call smart contract + backend
-      // For demo: add to local state
+      if (signer && wallet && !wallet.startsWith('0xDEMO')) {
+        // Real contract call
+        const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer)
+        const weeklyWei = ethers.parseEther(form.weeklyLimit)
+        const monthlyWei = ethers.parseEther(form.monthlyLimit)
+
+        toast.loading('Confirm transaction in MetaMask...', { id: 'addchild' })
+        const tx = await contract.addChild(form.walletAddress, form.alias, weeklyWei, monthlyWei)
+        toast.loading('Waiting for confirmation...', { id: 'addchild' })
+        await tx.wait()
+
+        // Set categories on-chain
+        for (const [cat, allowed] of Object.entries(form.categories)) {
+          const catTx = await contract.setCategory(form.walletAddress, cat, allowed)
+          await catTx.wait()
+        }
+
+        toast.success(`${form.name} added on-chain!`, { id: 'addchild' })
+      } else {
+        // Demo mode
+        await new Promise(r => setTimeout(r, 800))
+        toast.success(`Demo: ${form.name} added with alias ${form.alias}`)
+      }
+
       const newChild = {
         id: Date.now().toString(),
         name: form.name,
@@ -50,14 +78,16 @@ export default function AddChildModal({ onClose }) {
         monthlyLimit: form.monthlyLimit,
         balance: '0',
         spent: '0',
+        weeklySpent: '0',
+        monthlySpent: '0',
         categories: form.categories,
         active: true
       }
       setChildren([...children, newChild])
-      toast.success(`${form.name} added with alias ${form.alias}`)
       onClose()
     } catch (err) {
-      toast.error('Failed to add child')
+      console.error(err)
+      toast.error(err.reason || err.message?.slice(0, 80) || 'Failed to add child', { id: 'addchild' })
     } finally {
       setLoading(false)
     }
@@ -98,7 +128,7 @@ export default function AddChildModal({ onClose }) {
           </div>
 
           <div>
-            <label>Privacy Alias (auto-generated)</label>
+            <label>Privacy Alias</label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input value={form.alias} onChange={e => setForm(f => ({ ...f, alias: e.target.value }))} className="mono" style={{ color: 'var(--accent)' }} />
               <button className="btn-secondary" onClick={() => setForm(f => ({ ...f, alias: generateAlias() }))} style={{ whiteSpace: 'nowrap', padding: '10px 14px', fontSize: 12 }}>
@@ -146,7 +176,7 @@ export default function AddChildModal({ onClose }) {
           <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
             <button className="btn-secondary" onClick={onClose} style={{ flex: 1 }}>Cancel</button>
             <button className="btn-primary" onClick={handleSubmit} disabled={loading} style={{ flex: 2 }}>
-              {loading ? 'Adding...' : 'Add Child & Deploy Wallet'}
+              {loading ? 'Adding on-chain...' : 'Add Child & Deploy Wallet'}
             </button>
           </div>
         </div>

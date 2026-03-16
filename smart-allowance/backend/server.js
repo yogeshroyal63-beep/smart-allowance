@@ -13,31 +13,19 @@ dotenv.config()
 const app = express()
 const PORT = process.env.PORT || 5000
 
-// --- CORS setup that allows localhost + any *.vercel.app ---
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true) // allow server-to-server / curl
-
-    if (
-      origin === 'http://localhost:3000' ||
-      origin === process.env.FRONTEND_URL ||
-      origin.endsWith('.vercel.app')
-    ) {
-      return callback(null, true)
-    }
-
-    return callback(new Error('Not allowed by CORS'))
-  },
-  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
-  credentials: true
-}
-
-app.options('*', cors(corsOptions)) // handle preflight
-app.use(cors(corsOptions))
-// -----------------------------------------------------------
+// CORS headers for Vercel frontend
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "*")
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200)
+  }
+  next()
+})
 
 app.use(helmet())
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }))
 app.use(express.json())
 
 const limiter = rateLimit({ windowMs: 60 * 1000, max: 60 })
@@ -45,7 +33,7 @@ app.use('/api/', limiter)
 
 // Routes
 app.use('/api/ai', aiRouter)
-app.use('/api/agent', aiRouter)
+app.use('/api/agent', aiRouter)      // AgentChat calls /api/agent/chat
 app.use('/api/payment', paymentRouter)
 app.use('/api/children', childrenRouter)
 

@@ -80,6 +80,7 @@ export default function PaymentModal({ onClose, prefill }) {
     try {
       const payload = {
         childAlias: childProfile.alias,
+        childWallet: wallet && !wallet.startsWith('0xDEMO') ? wallet : null,
         merchant: form.merchant,
         amount: form.amount,
         category: form.category,

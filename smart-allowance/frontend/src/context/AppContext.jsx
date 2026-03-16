@@ -1,8 +1,17 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useState, useCallback } from 'react'
 import { ethers } from 'ethers'
+import axios from 'axios'
 import toast from 'react-hot-toast'
 
 const AppContext = createContext(null)
+
+const BASE_SEPOLIA = {
+  chainId: '0x14A34',  // 84532
+  chainName: 'Base Sepolia',
+  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+  rpcUrls: ['https://sepolia.base.org'],
+  blockExplorerUrls: ['https://sepolia.basescan.org'],
+}
 
 export function AppProvider({ children }) {
   const [role, setRole] = useState(null)
@@ -15,6 +24,41 @@ export function AppProvider({ children }) {
   const [childProfile, setChildProfile] = useState(null)
   const [aiInsights, setAiInsights] = useState([])
 
+  // ── Load children from backend (on-chain read via backend) ──────────────────
+  const loadChildren = useCallback(async (parentAddress) => {
+    if (!parentAddress || parentAddress.startsWith('0xDEMO')) return
+    try {
+      const res = await axios.get(`/api/children/${parentAddress}`)
+      if (res.data.children?.length > 0) {
+        setChildrenList(res.data.children)
+      }
+    } catch (err) {
+      console.warn('loadChildren failed:', err.message)
+    }
+  }, [])
+
+  // ── Load child profile from on-chain ────────────────────────────────────────
+  const loadChildProfile = useCallback(async (childAddress) => {
+    if (!childAddress || childAddress.startsWith('0xDEMO')) return
+    try {
+      const res = await axios.get(`/api/payment/child-data/${childAddress}`)
+      const data = res.data
+      setChildProfile(prev => ({
+        ...(prev || {}),
+        alias: data.aliasName,
+        balance: data.balance,
+        weeklyLimit: data.weeklyLimit,
+        monthlyLimit: data.monthlyLimit,
+        weeklySpent: data.weeklySpent,
+        monthlySpent: data.monthlySpent,
+        active: data.active,
+      }))
+    } catch (err) {
+      console.warn('loadChildProfile failed:', err.message)
+    }
+  }, [])
+
+  // ── Connect wallet ───────────────────────────────────────────────────────────
   const connectWallet = async (selectedRole) => {
     try {
       if (!window.ethereum) {
@@ -22,23 +66,48 @@ export function AppProvider({ children }) {
         return false
       }
       setLoading(true)
+
       const _provider = new ethers.BrowserProvider(window.ethereum)
       await _provider.send('eth_requestAccounts', [])
+
+      // Switch to Base Sepolia
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: BASE_SEPOLIA.chainId }],
+        })
+      } catch (switchErr) {
+        if (switchErr.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [BASE_SEPOLIA],
+          })
+        }
+      }
+
       const _signer = await _provider.getSigner()
       const address = await _signer.getAddress()
+
       setProvider(_provider)
       setSigner(_signer)
       setWallet(address)
       setRole(selectedRole)
-      setRole(selectedRole)
-      setChildrenList([])        // ← add
-      setTransactions([])        // ← add
-      setChildProfile(null)      // ← add
-      
+      setChildrenList([])
+      setTransactions([])
+      setChildProfile(null)
+
       toast.success(`Connected: ${address.slice(0, 6)}...${address.slice(-4)}`)
+
+      // Auto-load data after connect
+      if (selectedRole === 'parent') {
+        setTimeout(() => loadChildren(address), 500)
+      } else if (selectedRole === 'child') {
+        setTimeout(() => loadChildProfile(address), 500)
+      }
+
       return true
     } catch (err) {
-      toast.error('Wallet connection failed')
+      if (err.code !== 4001) toast.error('Wallet connection failed')
       return false
     } finally {
       setLoading(false)
@@ -48,8 +117,10 @@ export function AppProvider({ children }) {
   const disconnectWallet = () => {
     setWallet(null); setProvider(null); setSigner(null)
     setRole(null); setChildrenList([]); setTransactions([])
+    setChildProfile(null)
   }
 
+  // ── Demo mode ────────────────────────────────────────────────────────────────
   const loadDemoData = (demoRole) => {
     setRole(demoRole)
     setWallet('0xDEMO...1234')
@@ -58,14 +129,16 @@ export function AppProvider({ children }) {
         {
           id: '1', name: 'Alice', alias: 'StarGazer#4821',
           walletAddress: '0x742d35Cc6634C0532925a3b8D4C9C2aF4D7e9d1f',
-          balance: '0.045', weeklyLimit: '0.05', monthlyLimit: '0.2', spent: '0.012',
+          balance: '0.045', weeklyLimit: '0.05', monthlyLimit: '0.2',
+          weeklySpent: '0.012', monthlySpent: '0.035', spent: '0.012',
           categories: { food: true, education: true, entertainment: false, clothing: true, gaming: false },
           age: 14, active: true
         },
         {
           id: '2', name: 'Bob', alias: 'CryptoKid#7392',
           walletAddress: '0x9f2d35Cc6634C0532925a3b8D4C9C2aF4D7e9d2a',
-          balance: '0.022', weeklyLimit: '0.03', monthlyLimit: '0.12', spent: '0.028',
+          balance: '0.022', weeklyLimit: '0.03', monthlyLimit: '0.12',
+          weeklySpent: '0.028', monthlySpent: '0.09', spent: '0.028',
           categories: { food: true, education: true, entertainment: true, clothing: false, gaming: true },
           age: 11, active: true
         }
@@ -96,9 +169,11 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       role, setRole, wallet, provider, signer, loading, setLoading,
       children: childrenList, setChildren: setChildrenList,
-      transactions, setTransactions, childProfile, setChildProfile,
+      transactions, setTransactions,
+      childProfile, setChildProfile,
       aiInsights, setAiInsights,
-      connectWallet, disconnectWallet, loadDemoData
+      connectWallet, disconnectWallet, loadDemoData,
+      loadChildren, loadChildProfile,
     }}>
       {children}
     </AppContext.Provider>

@@ -1,5 +1,9 @@
 import { ethers } from 'ethers'
+import axios from "axios";
 
+axios.defaults.baseURL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+export default axios;
 export const formatAddress = (addr) => {
   if (!addr) return ''
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`

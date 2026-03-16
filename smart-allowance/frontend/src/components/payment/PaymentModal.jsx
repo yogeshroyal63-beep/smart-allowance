@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { X, Send, Shield, CheckCircle, XCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../../context/AppContext'
@@ -18,7 +18,6 @@ const MERCHANTS = {
   gaming: ['Steam', 'PlayStation Store', 'Xbox Store', 'Roblox']
 }
 
-// Merchant wallet addresses (demo — in prod these would be real addresses)
 const MERCHANT_WALLETS = {
   "McDonald's": '0x000000000000000000000000000000000000dEaD',
   'Subway': '0x000000000000000000000000000000000000dEaD',
@@ -26,15 +25,51 @@ const MERCHANT_WALLETS = {
   'Steam': '0x000000000000000000000000000000000000dEaD',
 }
 
-export default function PaymentModal({ onClose }) {
+function normalizeCategory(cat) {
+  if (!cat) return ''
+  const c = cat.toLowerCase().trim()
+  const map = {
+    food: 'food', eat: 'food', restaurant: 'food',
+    education: 'education', edu: 'education', school: 'education',
+    entertainment: 'entertainment', fun: 'entertainment',
+    clothing: 'clothing', clothes: 'clothing', fashion: 'clothing',
+    gaming: 'gaming', game: 'gaming', games: 'gaming',
+  }
+  return map[c] || CATEGORIES.find(x => x.startsWith(c)) || ''
+}
+
+export default function PaymentModal({ onClose, prefill }) {
   const { childProfile, setChildProfile, signer, wallet } = useApp()
   const [step, setStep] = useState('form')
-  const [form, setForm] = useState({ merchant: '', amount: '', category: '', notes: '' })
   const [result, setResult] = useState(null)
 
-  const handleCategorySelect = (cat) => {
-    setForm(f => ({ ...f, category: cat, merchant: '' }))
-  }
+  // Initialize with prefill immediately — key fix: useState initializer
+  const [form, setForm] = useState(() => {
+    if (prefill) {
+      const cat = normalizeCategory(prefill.category)
+      return {
+        category: cat,
+        merchant: prefill.merchant || '',
+        amount: prefill.amount || '',
+        notes: prefill.notes || '',
+      }
+    }
+    return { merchant: '', amount: '', category: '', notes: '' }
+  })
+
+  useEffect(() => {
+    if (prefill) {
+      const cat = normalizeCategory(prefill.category)
+      setForm({
+        category: cat,
+        merchant: prefill.merchant || '',
+        amount: prefill.amount || '',
+        notes: prefill.notes || '',
+      })
+    }
+  }, [prefill])
+
+  const merchantInList = form.category && MERCHANTS[form.category]?.includes(form.merchant)
 
   const handleSubmit = async () => {
     if (!form.merchant || !form.amount || !form.category) {
@@ -43,7 +78,6 @@ export default function PaymentModal({ onClose }) {
     }
     setStep('processing')
     try {
-      // Step 1: AI evaluates payment
       const payload = {
         childAlias: childProfile.alias,
         merchant: form.merchant,
@@ -62,21 +96,12 @@ export default function PaymentModal({ onClose }) {
       const response = await axios.post('/api/payment/request', payload)
       const aiResult = response.data
 
-      // Step 2: If approved and real wallet, call contract
       if (aiResult.approved && signer && wallet && !wallet.startsWith('0xDEMO')) {
         try {
           const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer)
           const merchantWallet = MERCHANT_WALLETS[form.merchant] || '0x000000000000000000000000000000000000dEaD'
           const amountWei = ethers.parseEther(form.amount)
-
-          const tx = await contract.processPayment(
-            wallet,           // childWallet
-            merchantWallet,   // merchant address
-            amountWei,        // amount
-            form.category,    // category
-            form.merchant,    // merchantName
-            true              // approved
-          )
+          const tx = await contract.processPayment(wallet, merchantWallet, amountWei, form.category, form.merchant, true)
           toast.loading('Processing on-chain...', { id: 'payment' })
           const receipt = await tx.wait()
           aiResult.txHash = receipt.hash
@@ -84,7 +109,6 @@ export default function PaymentModal({ onClose }) {
           toast.success('Payment processed on-chain!', { id: 'payment' })
         } catch (contractErr) {
           console.error('Contract call failed:', contractErr)
-          // AI approved but contract failed — still show result
           aiResult.contractError = contractErr.reason || 'Contract call failed'
         }
       }
@@ -109,7 +133,6 @@ export default function PaymentModal({ onClose }) {
       }
     } catch (err) {
       console.error(err)
-      // Demo fallback
       const allowed = childProfile.categories[form.category]
       const wouldExceed = parseFloat(childProfile.weeklySpent) + parseFloat(form.amount || 0) > parseFloat(childProfile.weeklyLimit)
       const approved = allowed && !wouldExceed
@@ -118,11 +141,11 @@ export default function PaymentModal({ onClose }) {
         reason: !allowed
           ? `❌ "${form.category}" category is not allowed by your parent.`
           : wouldExceed
-          ? `❌ This payment would exceed your weekly limit of ${childProfile.weeklyLimit} ETH.`
+          ? `❌ This would exceed your weekly limit of ${childProfile.weeklyLimit} ETH.`
           : `✅ Payment approved. ${form.merchant} received ${form.amount} ETH.`,
         aiAnalysis: approved
-          ? `Payment is within your ${form.category} budget. Transaction processed with alias ${childProfile.alias} — your real identity was not shared.`
-          : `Payment blocked based on your parent's rules. No funds transferred.`,
+          ? `Payment is within your ${form.category} budget. Processed with alias ${childProfile.alias} — real identity not shared.`
+          : `Payment blocked based on parent rules. No funds transferred.`,
         txHash: approved ? `0x${Math.random().toString(16).slice(2, 66)}` : null,
         privacyNote: `Merchant only sees: ${childProfile.alias}`
       })
@@ -150,7 +173,7 @@ export default function PaymentModal({ onClose }) {
         <AnimatePresence mode="wait">
           {step === 'form' && (
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <div style={{ padding: 12, background: 'rgba(20,184,166,0.05)', borderRadius: 8, border: '1px solid rgba(20,184,166,0.2)', marginBottom: 20, display: 'flex', gap: 10 }}>
+              <div style={{ padding: 12, background: 'rgba(20,184,166,0.05)', borderRadius: 8, border: '1px solid rgba(20,184,166,0.2)', marginBottom: 16, display: 'flex', gap: 10 }}>
                 <Shield size={16} color="var(--accent)" style={{ flexShrink: 0, marginTop: 1 }} />
                 <div>
                   <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', marginBottom: 2 }}>Privacy Protected</p>
@@ -160,22 +183,30 @@ export default function PaymentModal({ onClose }) {
                 </div>
               </div>
 
+              {prefill && (prefill.merchant || prefill.amount) && (
+                <div style={{ padding: 10, background: 'rgba(0,255,135,0.05)', borderRadius: 8, border: '1px solid rgba(0,255,135,0.2)', marginBottom: 16 }}>
+                  <p style={{ fontSize: 12, color: 'var(--accent)' }}>🤖 Pre-filled from agent chat — review and confirm</p>
+                </div>
+              )}
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Category */}
                 <div>
                   <label style={{ marginBottom: 10, display: 'block' }}>Category *</label>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {CATEGORIES.map(cat => {
                       const allowed = childProfile.categories[cat]
+                      const selected = form.category === cat
                       return (
                         <button
                           key={cat}
-                          onClick={() => allowed && handleCategorySelect(cat)}
+                          onClick={() => allowed && setForm(f => ({ ...f, category: cat }))}
                           style={{
                             padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500,
                             cursor: allowed ? 'pointer' : 'not-allowed', opacity: allowed ? 1 : 0.4,
-                            background: form.category === cat ? 'rgba(20,184,166,0.15)' : 'var(--bg-primary)',
-                            border: `1px solid ${form.category === cat ? 'rgba(20,184,166,0.4)' : 'var(--border)'}`,
-                            color: form.category === cat ? 'var(--accent)' : allowed ? 'var(--text-primary)' : 'var(--text-muted)',
+                            background: selected ? 'rgba(20,184,166,0.15)' : 'var(--bg-primary)',
+                            border: `1px solid ${selected ? 'rgba(20,184,166,0.4)' : 'var(--border)'}`,
+                            color: selected ? 'var(--accent)' : allowed ? 'var(--text-primary)' : 'var(--text-muted)',
                             display: 'flex', alignItems: 'center', gap: 6
                           }}
                         >
@@ -187,28 +218,34 @@ export default function PaymentModal({ onClose }) {
                   </div>
                 </div>
 
+                {/* Merchant */}
                 <div>
-                  <label>Merchant *</label>
+                  <label style={{ marginBottom: 8, display: 'block' }}>Merchant *</label>
                   {form.category ? (
-                    <select value={form.merchant} onChange={e => setForm(f => ({ ...f, merchant: e.target.value }))}>
-                      <option value="">Select merchant...</option>
-                      {MERCHANTS[form.category]?.map(m => <option key={m} value={m}>{m}</option>)}
-                      <option value="custom">Other</option>
-                    </select>
+                    <>
+                      <select
+                        value={merchantInList ? form.merchant : ''}
+                        onChange={e => setForm(f => ({ ...f, merchant: e.target.value }))}
+                      >
+                        <option value="">Select merchant...</option>
+                        {MERCHANTS[form.category]?.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      {/* Always show text input — prefill fills it, or user types */}
+                      <input
+                        style={{ marginTop: 8 }}
+                        placeholder="Or type merchant name"
+                        value={merchantInList ? '' : form.merchant}
+                        onChange={e => setForm(f => ({ ...f, merchant: e.target.value }))}
+                      />
+                    </>
                   ) : (
                     <input disabled placeholder="Select a category first" />
                   )}
-                  {form.merchant === 'custom' && (
-                    <input
-                      style={{ marginTop: 8 }}
-                      placeholder="Enter merchant name"
-                      onChange={e => setForm(f => ({ ...f, merchant: e.target.value }))}
-                    />
-                  )}
                 </div>
 
+                {/* Amount */}
                 <div>
-                  <label>Amount (ETH) *</label>
+                  <label style={{ marginBottom: 8, display: 'block' }}>Amount (ETH) *</label>
                   <input
                     type="number" step="0.001" min="0.001"
                     value={form.amount}
@@ -223,6 +260,17 @@ export default function PaymentModal({ onClose }) {
                   )}
                 </div>
 
+                {/* Notes */}
+                <div>
+                  <label style={{ marginBottom: 8, display: 'block' }}>Notes (optional)</label>
+                  <input
+                    value={form.notes}
+                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                    placeholder="What is this for?"
+                  />
+                </div>
+
+                {/* Limits */}
                 <div style={{ padding: 12, background: 'var(--bg-primary)', borderRadius: 8, border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Weekly used</span>

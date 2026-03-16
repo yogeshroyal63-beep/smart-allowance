@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Send, Bot, User, Loader2, Zap, RefreshCw } from 'lucide-react'
+import { Send, Bot, User, Loader2, Zap, RefreshCw, CreditCard } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { useApp } from '../../context/AppContext'
 import { useAgent } from '../../hooks/useAgent'
@@ -9,13 +9,13 @@ import { formatRelativeTime } from '../../utils'
 const QUICK_PROMPTS_PARENT = [
   'Show spending summary for all children',
   'Which child is close to their limit?',
-  'What transactions happened today?',
+  'What transactions happened recently?',
   'Give me AI insights on spending patterns',
 ]
 
 const QUICK_PROMPTS_CHILD = [
   'How much allowance do I have left?',
-  'Pay 0.001 ETH to GameStore for Minecraft',
+  'Pay 0.001 ETH to GameStore for gaming',
   'Show my spending this month',
   'What categories can I spend in?',
 ]
@@ -88,11 +88,12 @@ function ChatMessage({ msg }) {
   )
 }
 
-export default function AgentChat({ compact = false }) {
+// onPaymentRequest: ({ merchant, amount, category, reason }) => void
+export default function AgentChat({ compact = false, onPaymentRequest }) {
   const [input, setInput] = useState('')
   const { chatHistory, agentThinking, clearChat } = useStore()
-  const { role } = useApp()   // ← read role from AppContext (works in demo mode too)
-  const { sendMessage, loading } = useAgent()
+  const { role } = useApp()
+  const { sendMessage, loading } = useAgent({ onPaymentRequest })
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -138,9 +139,26 @@ export default function AgentChat({ compact = false }) {
             </p>
           </div>
         </div>
-        <button onClick={clearChat} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8 }} title="Clear chat">
-          <RefreshCw size={12} color="var(--text-muted)" />
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Child: quick pay button */}
+          {role === 'child' && onPaymentRequest && (
+            <button
+              onClick={() => onPaymentRequest({ merchant: '', amount: '', category: '', reason: '' })}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                background: 'rgba(0,255,135,0.12)', border: '1px solid rgba(0,255,135,0.3)',
+                color: 'var(--accent)', cursor: 'pointer'
+              }}
+              title="Make a payment"
+            >
+              <CreditCard size={12} /> Pay
+            </button>
+          )}
+          <button onClick={clearChat} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8 }} title="Clear chat">
+            <RefreshCw size={12} color="var(--text-muted)" />
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -216,7 +234,7 @@ export default function AgentChat({ compact = false }) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKey}
-            placeholder="Message the agent..."
+            placeholder={role === 'child' ? 'Ask about balance or say "pay 0.001 ETH to..."' : 'Message the agent...'}
             className="input-field"
             style={{ flex: 1, padding: '10px 14px', fontSize: 14 }}
             disabled={loading}

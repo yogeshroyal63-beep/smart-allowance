@@ -18,7 +18,14 @@ export default function ChildDashboard() {
   const { childProfile } = useApp()
   const [showAlias, setShowAlias] = useState(true)
   const [showPayment, setShowPayment] = useState(false)
+  const [paymentPrefill, setPaymentPrefill] = useState(null)
   const [activeTab, setActiveTab] = useState('dashboard')
+
+  // Called by AgentChat when agent detects a payment intent
+  const handleAgentPaymentRequest = ({ merchant, amount, category, reason }) => {
+    setPaymentPrefill({ merchant, amount, category, notes: reason })
+    setShowPayment(true)
+  }
 
   if (!childProfile) {
     return (
@@ -90,7 +97,7 @@ export default function ChildDashboard() {
               </div>
               <button
                 className="btn-primary"
-                onClick={() => setShowPayment(true)}
+                onClick={() => { setPaymentPrefill(null); setShowPayment(true) }}
                 style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 20 }}
               >
                 <Send size={16} />
@@ -189,12 +196,17 @@ export default function ChildDashboard() {
 
         {/* Tab: Agent */}
         {activeTab === 'agent' && (
-          <AgentChat />
+          <AgentChat onPaymentRequest={handleAgentPaymentRequest} />
         )}
 
       </motion.div>
 
-      {showPayment && <PaymentModal onClose={() => setShowPayment(false)} />}
+      {showPayment && (
+        <PaymentModal
+          onClose={() => { setShowPayment(false); setPaymentPrefill(null) }}
+          prefill={paymentPrefill}
+        />
+      )}
     </div>
   )
 }

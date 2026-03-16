@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react'
 import { useStore } from '../store/useStore'
+import { useApp } from '../context/AppContext'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
-export function useAgent() {
+export function useAgent({ onPaymentRequest } = {}) {
   const [loading, setLoading] = useState(false)
   const {
     addChatMessage,
@@ -11,9 +12,41 @@ export function useAgent() {
     setAgentStatus,
     addPendingApproval,
     chatHistory,
-    role,
-    getActiveChild,
   } = useStore()
+
+  // Pull real data from AppContext (works in both demo and real mode)
+  const { role, childProfile, children: childrenList } = useApp()
+
+  const buildChildContext = useCallback(() => {
+    if (role === 'child' && childProfile) {
+      return {
+        name: childProfile.name,
+        alias: childProfile.alias,
+        balance: childProfile.balance,
+        weeklyLimit: childProfile.weeklyLimit,
+        weeklySpent: childProfile.weeklySpent,
+        monthlyLimit: childProfile.monthlyLimit,
+        monthlySpent: childProfile.monthlySpent,
+        categories: childProfile.categories,
+        transactions: (childProfile.transactions || []).slice(0, 5),
+      }
+    }
+    if (role === 'parent' && childrenList?.length > 0) {
+      return {
+        children: childrenList.map(c => ({
+          name: c.name,
+          alias: c.alias,
+          balance: c.balance,
+          weeklyLimit: c.weeklyLimit,
+          monthlyLimit: c.monthlyLimit,
+          spent: c.spent,
+          categories: c.categories,
+          active: c.active,
+        }))
+      }
+    }
+    return null
+  }, [role, childProfile, childrenList])
 
   const sendMessage = useCallback(async (userMessage, context = {}) => {
     setLoading(true)
@@ -23,34 +56,39 @@ export function useAgent() {
     addChatMessage({ role: 'user', content: userMessage })
 
     try {
-      const child = getActiveChild()
+      const childContext = buildChildContext()
+
       const response = await axios.post('/api/agent/chat', {
         message: userMessage,
-        history: chatHistory.slice(-10), // last 10 messages for context
+        history: chatHistory.slice(-10),
         role,
-        childContext: child ? {
-          name: child.name,
-          balance: child.balance,
-          monthlyLimit: child.monthlyLimit,
-          spent: child.spent,
-          category_limits: child.category_limits,
-          agentEnabled: child.agentEnabled,
-        } : null,
+        childContext,
         ...context,
       })
 
       const { reply, action, requiresApproval } = response.data
 
       addChatMessage({ role: 'assistant', content: reply, action })
-
+      console.log('requiresApproval:', requiresApproval, 'role:', role, 'onPaymentRequest:', !!onPaymentRequest)
       if (requiresApproval) {
-        addPendingApproval({
-          id: `approval_${Date.now()}`,
-          ...requiresApproval,
-          timestamp: new Date().toISOString(),
-        })
-        setAgentStatus('waiting_approval')
-        toast('Payment request needs your approval', { icon: '⏳' })
+        // If child agent triggers a payment, open PaymentModal via callback
+        if (role === 'child' && onPaymentRequest) {
+          onPaymentRequest({
+            merchant: requiresApproval.merchant || '',
+            amount: requiresApproval.amount || '',
+            category: requiresApproval.category || '',
+            reason: requiresApproval.reason || userMessage,
+          })
+          toast('Opening payment flow...', { icon: '💳' })
+        } else {
+          addPendingApproval({
+            id: `approval_${Date.now()}`,
+            ...requiresApproval,
+            timestamp: new Date().toISOString(),
+          })
+          setAgentStatus('waiting_approval')
+          toast('Payment request needs your approval', { icon: '⏳' })
+        }
       } else {
         setAgentStatus('idle')
       }
@@ -66,7 +104,7 @@ export function useAgent() {
       setLoading(false)
       setAgentThinking(false)
     }
-  }, [chatHistory, role, getActiveChild, addChatMessage, setAgentThinking, setAgentStatus, addPendingApproval])
+  }, [chatHistory, role, buildChildContext, addChatMessage, setAgentThinking, setAgentStatus, addPendingApproval, onPaymentRequest])
 
   const requestPayment = useCallback(async (merchant, amount, category, reason) => {
     return sendMessage(

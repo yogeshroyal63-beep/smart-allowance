@@ -1,9 +1,13 @@
 import { ethers } from 'ethers'
-import axios from "axios";
+import axios from 'axios'
 
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+// ✅ FIXED: Set baseURL so ALL axios calls hit Railway backend in production
+// Add VITE_API_URL in Vercel dashboard → Settings → Environment Variables
+// VITE_API_URL = https://smart-allowance-production.up.railway.app
+axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
-export default axios;
+export default axios
+
 export const formatAddress = (addr) => {
   if (!addr) return ''
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
@@ -76,7 +80,6 @@ export const generateMockTxHash = () => {
 }
 
 export const generatePrivacyAlias = (address) => {
-  // Generate a privacy alias from address
   const adjectives = ['quiet', 'swift', 'bright', 'calm', 'wise']
   const nouns = ['river', 'cloud', 'stone', 'leaf', 'wave']
   const num = parseInt(address.slice(-4), 16) % 100

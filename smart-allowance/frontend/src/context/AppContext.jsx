@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 import { ethers } from 'ethers'
-import axios from 'axios'
+// ✅ FIXED: Import axios from utils so baseURL (Railway backend) is always set
+import axios from '../utils/index.js'
 import toast from 'react-hot-toast'
 
 const AppContext = createContext(null)

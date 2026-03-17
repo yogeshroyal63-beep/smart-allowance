@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useApp } from '../../context/AppContext'
 import { ethers } from 'ethers'
 import { CONTRACT_ADDRESS, ABI } from '../../contracts/AllowanceManager'
-import axios from 'axios'
+// ✅ FIXED: Import axios from utils so baseURL (Railway backend) is always set
+import axios from '../../utils/index.js'
 import toast from 'react-hot-toast'
 
 const CATEGORIES = ['food', 'education', 'entertainment', 'clothing', 'gaming']
@@ -43,7 +44,6 @@ export default function PaymentModal({ onClose, prefill }) {
   const [step, setStep] = useState('form')
   const [result, setResult] = useState(null)
 
-  // Initialize with prefill immediately — key fix: useState initializer
   const [form, setForm] = useState(() => {
     if (prefill) {
       const cat = normalizeCategory(prefill.category)
@@ -231,7 +231,6 @@ export default function PaymentModal({ onClose, prefill }) {
                         <option value="">Select merchant...</option>
                         {MERCHANTS[form.category]?.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
-                      {/* Always show text input — prefill fills it, or user types */}
                       <input
                         style={{ marginTop: 8 }}
                         placeholder="Or type merchant name"

@@ -2,7 +2,8 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Zap, RefreshCw, Brain, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
-import axios from 'axios'
+// ✅ FIXED: Import axios from utils so baseURL (Railway backend) is always set
+import axios from '../../utils/index.js'
 
 export default function AIInsights() {
   const { children, transactions, aiInsights, setAiInsights } = useApp()

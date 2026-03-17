@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import { useStore } from '../store/useStore'
 import { useApp } from '../context/AppContext'
-import axios from 'axios'
+// ✅ FIXED: Import axios from utils so baseURL (Railway backend) is always set
+import axios from '../utils/index.js'
 import toast from 'react-hot-toast'
 
 export function useAgent({ onPaymentRequest } = {}) {
@@ -14,7 +15,6 @@ export function useAgent({ onPaymentRequest } = {}) {
     chatHistory,
   } = useStore()
 
-  // Pull real data from AppContext (works in both demo and real mode)
   const { role, childProfile, children: childrenList } = useApp()
 
   const buildChildContext = useCallback(() => {
@@ -69,9 +69,8 @@ export function useAgent({ onPaymentRequest } = {}) {
       const { reply, action, requiresApproval } = response.data
 
       addChatMessage({ role: 'assistant', content: reply, action })
-      console.log('requiresApproval:', requiresApproval, 'role:', role, 'onPaymentRequest:', !!onPaymentRequest)
+
       if (requiresApproval) {
-        // If child agent triggers a payment, open PaymentModal via callback
         if (role === 'child' && onPaymentRequest) {
           onPaymentRequest({
             merchant: requiresApproval.merchant || '',

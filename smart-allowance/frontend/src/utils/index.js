@@ -1,10 +1,15 @@
 import { ethers } from 'ethers'
 import axios from 'axios'
 
-// ✅ FIXED: Set baseURL so ALL axios calls hit Railway backend in production
-// Add VITE_API_URL in Vercel dashboard → Settings → Environment Variables
-// VITE_API_URL = https://smart-allowance-production.up.railway.app
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+// ✅ FIXED: Smart baseURL detection
+// - In LOCAL DEV (npm run dev): baseURL = '' → Vite proxy handles /api → hits localhost:5000
+// - In PRODUCTION (Vercel build): baseURL = VITE_API_URL → axios hits Railway directly
+// This means you NEVER need VITE_API_URL in your local .env
+const isProd = import.meta.env.PROD // Vite sets this true automatically on `vite build`
+
+axios.defaults.baseURL = isProd
+  ? (import.meta.env.VITE_API_URL || 'https://smart-allowance-production.up.railway.app')
+  : '' // empty = relative URLs, Vite proxy intercepts /api/* in dev
 
 export default axios
 
